@@ -33,10 +33,11 @@ import org.apache.sshd.client.channel.ClientChannel;
 import org.apache.sshd.client.channel.ClientChannelEvent;
 import org.apache.sshd.client.config.keys.ClientIdentityLoader;
 import org.apache.sshd.client.future.AuthFuture;
+import org.apache.sshd.client.future.ConnectFuture;
 import org.apache.sshd.client.keyverifier.ServerKeyVerifier;
 import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.common.config.keys.FilePasswordProvider;
-import org.apache.sshd.common.util.SecurityUtils;
+import org.apache.sshd.common.util.security.SecurityUtils;
 import org.eclipse.jgit.lib.Config;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
 import org.eclipse.jgit.util.FS;
@@ -56,18 +57,18 @@ import com.gitblit.transport.ssh.SshKey;
  */
 public abstract class SshUnitTest extends GitblitUnitTest {
 
-	protected static final AtomicBoolean started = new AtomicBoolean(false);
-	protected static KeyPairGenerator generator;
-	protected KeyPair rwKeyPair;
-	protected KeyPair roKeyPair;
-	protected String username = "admin";
-	protected String password = "admin";
+    protected static final AtomicBoolean started = new AtomicBoolean(false);
+    protected static KeyPairGenerator generator;
+    protected KeyPair rwKeyPair;
+    protected KeyPair roKeyPair;
+    protected String username = "admin";
+    protected String password = "admin";
 
-	@BeforeClass
-	public static void startGitblit() throws Exception {
-		generator = SecurityUtils.getKeyPairGenerator("RSA");
-		started.set(GitBlitSuite.startGitblit());
-
+    @BeforeClass
+    public static void startGitblit() throws Exception {
+        generator = SecurityUtils.getKeyPairGenerator("RSA");
+        started.set(GitBlitSuite.startGitblit());
+        
 		final SystemReader dsr  = SystemReader.getInstance();
 		SystemReader.setInstance(new SystemReader()
 		{
@@ -118,45 +119,45 @@ public abstract class SshUnitTest extends GitblitUnitTest {
 				return defaultsr.getTimezone(when);
 			}
 		});
-	}
+    }
 
-	@AfterClass
-	public static void stopGitblit() throws Exception {
-		if (started.get()) {
-			GitBlitSuite.stopGitblit();
-		}
-	}
+    @AfterClass
+    public static void stopGitblit() throws Exception {
+        if (started.get()) {
+            GitBlitSuite.stopGitblit();
+        }
+    }
 
-	protected MemoryKeyManager getKeyManager() {
-		IPublicKeyManager mgr = gitblit().getPublicKeyManager();
-		if (mgr instanceof MemoryKeyManager) {
-			return (MemoryKeyManager) gitblit().getPublicKeyManager();
-		} else {
-			throw new RuntimeException("unexpected key manager type " + mgr.getClass().getName());
-		}
-	}
+    protected MemoryKeyManager getKeyManager() {
+        IPublicKeyManager mgr = gitblit().getPublicKeyManager();
+        if (mgr instanceof MemoryKeyManager) {
+            return (MemoryKeyManager) gitblit().getPublicKeyManager();
+        } else {
+            throw new RuntimeException("unexpected key manager type " + mgr.getClass().getName());
+        }
+    }
 
-	@Before
-	public void prepare() {
-		rwKeyPair = generator.generateKeyPair();
+    @Before
+    public void prepare() {
+        rwKeyPair = generator.generateKeyPair();
 
-		MemoryKeyManager keyMgr = getKeyManager();
-		keyMgr.addKey(username, new SshKey(rwKeyPair.getPublic()));
+        MemoryKeyManager keyMgr = getKeyManager();
+        keyMgr.addKey(username, new SshKey(rwKeyPair.getPublic()));
 
-		roKeyPair = generator.generateKeyPair();
-		SshKey sshKey = new SshKey(roKeyPair.getPublic());
-		sshKey.setPermission(AccessPermission.CLONE);
-		keyMgr.addKey(username, sshKey);
-	}
+        roKeyPair = generator.generateKeyPair();
+        SshKey sshKey = new SshKey(roKeyPair.getPublic());
+        sshKey.setPermission(AccessPermission.CLONE);
+        keyMgr.addKey(username, sshKey);
+    }
 
-	@After
-	public void tearDown() {
-		MemoryKeyManager keyMgr = getKeyManager();
-		keyMgr.removeAllKeys(username);
-	}
+    @After
+    public void tearDown() {
+        MemoryKeyManager keyMgr = getKeyManager();
+        keyMgr.removeAllKeys(username);
+    }
 
-	protected SshClient getClient() {
-		SshClient client = SshClient.setUpDefaultClient();
+    protected SshClient getClient() {
+        SshClient client = SshClient.setUpDefaultClient();
 		client.setClientIdentityLoader(new ClientIdentityLoader() {	// Ignore the files under ~/.ssh
 				@Override
 				public boolean isValidLocation(String location) throws IOException {
@@ -167,48 +168,51 @@ public abstract class SshUnitTest extends GitblitUnitTest {
 					return null;
 				}
 			});
-		client.setServerKeyVerifier(new ServerKeyVerifier() {
-			@Override
-			public boolean verifyServerKey(ClientSession sshClientSession, SocketAddress remoteAddress, PublicKey serverKey) {
-				return true;
-			}
-		});
-		client.start();
-		return client;
-	}
+        client.setServerKeyVerifier(new ServerKeyVerifier() {
+            @Override
+            public boolean verifyServerKey(ClientSession sshClientSession, SocketAddress remoteAddress, PublicKey serverKey) {
+                return true;
+            }
+        });
+        client.start();
+        return client;
+    }
 
-	protected String testSshCommand(String cmd) throws IOException, InterruptedException {
-		return testSshCommand(cmd, null);
-	}
+    protected String testSshCommand(String cmd) throws IOException, InterruptedException {
+        return testSshCommand(cmd, null);
+    }
 
-	protected String testSshCommand(String cmd, String stdin) throws IOException, InterruptedException {
-		SshClient client = getClient();
-		ClientSession session = client.connect(username, "localhost", GitBlitSuite.sshPort).verify().getSession();
-		session.addPublicKeyIdentity(rwKeyPair);
-		AuthFuture authFuture = session.auth();
+
+    protected String testSshCommand(String cmd, String stdin) throws IOException, InterruptedException {
+        SshClient client = getClient();
+        ConnectFuture futureConnection = client.connect(username, "localhost", GitBlitSuite.sshPort);
+        futureConnection.await();
+        ClientSession session = (ClientSession) futureConnection.getSession();
+        session.addPublicKeyIdentity(rwKeyPair);
+        AuthFuture authFuture = session.auth();
 		assertTrue(authFuture.await());
-		assertTrue(authFuture.isSuccess());
+        assertTrue(authFuture.isSuccess());
 
-		ClientChannel channel = session.createChannel(ClientChannel.CHANNEL_EXEC, cmd);
-		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		if (stdin != null) {
-			Writer w = new OutputStreamWriter(baos);
-			w.write(stdin);
-			w.close();
-		}
-		channel.setIn(new ByteArrayInputStream(baos.toByteArray()));
+        ClientChannel channel = session.createChannel(ClientChannel.CHANNEL_EXEC, cmd);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        if (stdin != null) {
+            Writer w = new OutputStreamWriter(baos);
+            w.write(stdin);
+            w.close();
+        }
+        channel.setIn(new ByteArrayInputStream(baos.toByteArray()));
 
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		ByteArrayOutputStream err = new ByteArrayOutputStream();
-		channel.setOut(out);
-		channel.setErr(err);
-		channel.open();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        channel.setOut(out);
+        channel.setErr(err);
+        channel.open();
 
-		channel.waitFor(EnumSet.of(ClientChannelEvent.CLOSED, ClientChannelEvent.EOF), 0);
+        channel.waitFor(EnumSet.of(ClientChannelEvent.CLOSED, ClientChannelEvent.EOF), 0);
 
-		String result = out.toString().trim();
-		channel.close(false);
-		client.stop();
-		return result;
-	}
+        String result = out.toString().trim();
+        channel.close(false);
+        client.stop();
+        return result;
+    }
 }

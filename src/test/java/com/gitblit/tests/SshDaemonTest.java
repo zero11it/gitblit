@@ -44,9 +44,9 @@ public class SshDaemonTest extends SshUnitTest {
 	@Test
 	public void testPublicKeyAuthentication() throws Exception {
 		SshClient client = getClient();
-		ClientSession session = client.connect(username, "localhost", GitBlitSuite.sshPort).verify().getSession();
+		ClientSession session = client.connect(username, "localhost", GitBlitSuite.sshPort).getSession();
 		session.addPublicKeyIdentity(rwKeyPair);
-		assertTrue(session.auth().await());
+		assertTrue(session.auth().isSuccess());
 	}
 
 	@Test
