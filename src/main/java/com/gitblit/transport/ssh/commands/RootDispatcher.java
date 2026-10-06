@@ -47,6 +47,7 @@ class RootDispatcher extends DispatchCommand {
 		register(GitDispatcher.class);
 		register(KeysDispatcher.class);
 		register(PluginDispatcher.class);
+		register(RepositoriesDispatcher.class);
 
 		List<DispatchCommand> exts = gitblit.getExtensions(DispatchCommand.class);
 		for (DispatchCommand ext : exts) {
